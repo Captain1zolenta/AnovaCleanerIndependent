@@ -143,23 +143,20 @@ namespace AnovaCleaner
         // Генерация полной и уменьшенной таблиц.
         private List<List<FactorRow>> GenerateRandomTable(int sizeCategory, int columnCount, int maxValuesPerColumn)
         {
-            int rowsToRemove;
+            // Определяем параметры таблицы.
             switch (sizeCategory)
             {
                 case 1:
                     columnCount = random.Next(2, 4);
                     maxValuesPerColumn = random.Next(3, 7);
-                    rowsToRemove = random.Next(Math.Max(0, (int)(CartesianProductCount(columnCount, maxValuesPerColumn) * 0.2) - 1), (int)(CartesianProductCount(columnCount, maxValuesPerColumn) * 0.5));
                     break;
                 case 2:
                     columnCount = random.Next(3, 5);
                     maxValuesPerColumn = random.Next(6, 11);
-                    rowsToRemove = random.Next(Math.Max(0, (int)(CartesianProductCount(columnCount, maxValuesPerColumn) * 0.2) - 1), (int)(CartesianProductCount(columnCount, maxValuesPerColumn) * 0.5));
                     break;
                 case 3:
                     columnCount = random.Next(2, 5);
                     maxValuesPerColumn = Math.Min(12, random.Next(8, 13));
-                    rowsToRemove = random.Next(Math.Max(0, (int)(CartesianProductCount(columnCount, maxValuesPerColumn) * 0.2) - 1), (int)(CartesianProductCount(columnCount, maxValuesPerColumn) * 0.5));
                     break;
                 default:
                     throw new ArgumentException("sizeCategory must be 1, 2, or 3");
@@ -169,10 +166,16 @@ namespace AnovaCleaner
             List<HashSet<int>> columnValues = Enumerable.Range(0, columnCount)
                 .Select(i => GenerateRandomSet(random, maxValuesPerColumn)).ToList();
 
-            // Построение полного декартова произведения.
+            // Полное декартово произведение.
             List<FactorRow> cartesianProduct = CartesianProduct(columnValues);
 
             // Удаление случайных строк для создания неполной таблицы.
+            // Используем реальный размер cartesianProduct для расчета rowsToRemove.
+            int actualSize = cartesianProduct.Count;
+            int minRowsToRemove = Math.Max(0, (int)(actualSize * 0.2) - 1);
+            int maxRowsToRemove = (int)(actualSize * 0.5);
+            int rowsToRemove = random.Next(minRowsToRemove, maxRowsToRemove + 1);
+
             var indicesToRemove = Enumerable.Range(0, cartesianProduct.Count)
                                            .OrderBy(x => random.Next())
                                            .Take(rowsToRemove)
@@ -181,7 +184,7 @@ namespace AnovaCleaner
                 .Where((x, i) => !indicesToRemove.Contains(i))
                 .ToList();
 
-            // Добавление случайных результатов к обеим таблицам.
+            // Добавление случайных результатов.
             var fullDatasetWithResults = AddRandomResults(cartesianProduct);
             var reducedDatasetWithResults = AddRandomResults(reducedDataset);
 
@@ -345,15 +348,6 @@ namespace AnovaCleaner
             }
         }
 
-        // Подсчет размера декартова произведения.
-        private long CartesianProductCount(int columnCount, int maxValuesPerColumn)
-        {
-            long result = 1;
-            for (int i = 0; i < columnCount; i++)
-            {
-                result *= maxValuesPerColumn;
-            }
-            return result;
-        }
+        
     }
 }
