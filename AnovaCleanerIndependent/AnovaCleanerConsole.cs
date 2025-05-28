@@ -135,9 +135,9 @@ namespace AnovaCleaner
                 Console.WriteLine(row);
             }
 
-            // Сохранение очищенной таблицы в файл.
+            // Сохранение очищенной таблицы в файл (даже если очистка не удалась).
             SaveDatasetToFile(cleanedDataset, outputPath, factorColumns, "Result");
-            Console.WriteLine($"\nCleaned table saved to {outputPath}");
+            Console.WriteLine($"\nTable saved to {outputPath}");
         }
 
         // Генерация полной и уменьшенной таблиц.
@@ -218,14 +218,27 @@ namespace AnovaCleaner
         // Рекурсивная очистка таблицы с ограничением глубины.
         private List<FactorRow> CleanDatasetRecursive(List<FactorRow> dataset, List<FactorRow> cartesianProduct, int factorCount, Dictionary<int, HashSet<int>> uniqueValues, int depth)
         {
-            // Ограничение глубины рекурсии.
-            if (depth > 10)
+            // Ограничение глубины рекурсии (увеличено до 20 для сложных случаев).
+            if (depth > 20)
             {
                 Console.WriteLine("Failed to achieve full structure due to recursion depth limit.");
                 return dataset;
             }
 
-            // Шаг 1: Выделение редких значений.
+            // Шаг 1: Определяем покрытие комбинаций.
+            var missingCombinations = new HashSet<string>(
+                cartesianProduct.Select(row => string.Join("|", row.FactorValues)));
+            var presentCombinations = new HashSet<string>(
+                dataset.Select(row => string.Join("|", row.FactorValues.Take(factorCount))));
+            missingCombinations.ExceptWith(presentCombinations);
+
+            if (missingCombinations.Count == 0)
+            {
+                Console.WriteLine("Dataset is now full after cleaning.");
+                return dataset;
+            }
+
+            // Шаг 2: Выделение редких или конфликтующих комбинаций.
             var frequency = new Dictionary<int, Dictionary<int, int>>();
             for (int factorIndex = 0; factorIndex < factorCount; factorIndex++)
             {
@@ -236,27 +249,28 @@ namespace AnovaCleaner
                 }
             }
 
-            // Шаг 2: Генерация вариантов очистки.
-            var alternatives = new List<(List<FactorRow> cleanedData, int removedRows)>();
-            foreach (var factorIndex in frequency.Keys)
-            {
-                var rareValues = frequency[factorIndex]
-                    .OrderBy(kv => kv.Value)
-                    .Take(1) // Берем только одно самое редкое значение.
-                    .Select(kv => kv.Key)
-                    .ToList();
+            // Шаг 3: Выбираем фактор с наименьшим покрытием для удаления.
+            int targetFactorIndex = frequency.Keys
+                .OrderBy(f => frequency[f].Values.Sum() / (double)uniqueValues[f].Count)
+                .First();
+            var rareValues = frequency[targetFactorIndex]
+                .OrderBy(kv => kv.Value)
+                .Take(1)
+                .Select(kv => kv.Key)
+                .ToList();
 
-                foreach (var rareValue in rareValues)
-                {
-                    var cleanedData = dataset
-                        .Where(row => row.FactorValues[factorIndex] != rareValue)
-                        .ToList();
-                    int removedRows = dataset.Count - cleanedData.Count;
-                    alternatives.Add((cleanedData, removedRows));
-                }
+            // Шаг 4: Удаляем строки с редкими значениями.
+            var alternatives = new List<(List<FactorRow> cleanedData, int removedRows)>();
+            foreach (var rareValue in rareValues)
+            {
+                var cleanedData = dataset
+                    .Where(row => row.FactorValues[targetFactorIndex] != rareValue)
+                    .ToList();
+                int removedRows = dataset.Count - cleanedData.Count;
+                alternatives.Add((cleanedData, removedRows));
             }
 
-            // Шаг 3: Повторная проверка полноты.
+            // Шаг 5: Повторная проверка полноты.
             List<FactorRow> bestCleanedData = null;
             int minRemovedRows = int.MaxValue;
 
@@ -269,7 +283,7 @@ namespace AnovaCleaner
                 }
             }
 
-            // Шаг 4: Рекурсивная очистка, если необходимо.
+            // Шаг 6: Рекурсивная очистка, если необходимо.
             if (bestCleanedData == null)
             {
                 Console.WriteLine("No single removal achieved fullness. Trying recursive cleaning...");
