@@ -5,16 +5,61 @@ using System.Linq;
 
 namespace AnovaCleaner
 {
+    // Класс FactorRow представляет строку таблицы с значениями факторов и результатом.
+    public class FactorRow
+    {
+        // Массив значений: первые N элементов — значения факторов, последний — результат.
+        public int[] FactorValues { get; }
+
+        public FactorRow(int[] values)
+        {
+            FactorValues = values ?? throw new ArgumentNullException(nameof(values));
+        }
+
+        // Переопределение ToString для вывода строки в консоль или файл.
+        public override string ToString()
+        {
+            return string.Join("\t", FactorValues);
+        }
+
+        // Переопределение Equals для сравнения строк.
+        public override bool Equals(object obj)
+        {
+            if (obj is FactorRow other)
+            {
+                if (FactorValues.Length != other.FactorValues.Length) return false;
+                return !FactorValues.Where((t, i) => t != other.FactorValues[i]).Any();
+            }
+            return false;
+        }
+
+        // Переопределение GetHashCode для корректной работы HashSet.
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = 17;
+                foreach (var value in FactorValues)
+                {
+                    hash = hash * 23 + value.GetHashCode();
+                }
+                return hash;
+            }
+        }
+    }
+
+    // Основной класс консольного приложения для очистки таблиц ANOVA.
     public class AnovaCleanerConsole
     {
-        private static Random random = new Random();
+        private static readonly Random random = new Random();
 
+        // Точка входа в приложение.
         public static void Main(string[] args)
         {
-            AnovaCleaner.Tests.AnovaCleanerTests.RunTests();
             Console.WriteLine("ANOVA Cleaner Console");
             Console.WriteLine("Enter size category (1, 2, or 3):");
 
+            // Ввод категории размера (1 — малый, 2 — средний, 3 — большой).
             if (!int.TryParse(Console.ReadLine(), out int sizeCategory) || sizeCategory < 1 || sizeCategory > 3)
             {
                 Console.WriteLine("Invalid size category. Please enter 1, 2, or 3.");
@@ -26,38 +71,46 @@ namespace AnovaCleaner
             if (string.IsNullOrWhiteSpace(outputPath))
                 outputPath = "output.txt";
 
+            // Генерация и очистка таблицы.
             var cleaner = new AnovaCleanerConsole();
             cleaner.GenerateAndCleanTable(outputPath, sizeCategory);
+
+            // Запуск тестов после выполнения основной логики.
+            AnovaCleaner.Tests.AnovaCleanerTests.RunTests();
         }
 
+        // Метод для генерации, уменьшения и очистки таблицы.
         public void GenerateAndCleanTable(string outputPath, int sizeCategory)
         {
-            // Определяем параметры таблицы
+            // Определяем параметры таблицы в зависимости от категории.
             int columnCount, maxValuesPerColumn;
             switch (sizeCategory)
             {
                 case 1:
-                    columnCount = random.Next(2, 4);
-                    maxValuesPerColumn = random.Next(3, 7);
+                    columnCount = random.Next(2, 4); // 2–3 фактора
+                    maxValuesPerColumn = random.Next(3, 7); // 3–6 уровней
                     break;
                 case 2:
-                    columnCount = random.Next(3, 5);
-                    maxValuesPerColumn = random.Next(6, 11);
+                    columnCount = random.Next(3, 5); // 3–4 фактора
+                    maxValuesPerColumn = random.Next(6, 11); // 6–10 уровней
                     break;
                 case 3:
-                    columnCount = random.Next(2, 5);
-                    maxValuesPerColumn = Math.Min(12, random.Next(8, 13));
+                    columnCount = random.Next(2, 5); // 2–4 фактора
+                    maxValuesPerColumn = Math.Min(12, random.Next(8, 13)); // 8–12 уровней
                     break;
                 default:
                     throw new ArgumentException("sizeCategory must be 1, 2, or 3");
             }
 
+            // Названия столбцов (Factor1, Factor2, ...).
             var factorColumns = Enumerable.Range(0, columnCount).Select(i => $"Factor{i + 1}").ToArray();
+
+            // Генерация полной и уменьшенной таблиц.
             var datasets = GenerateRandomTable(sizeCategory, columnCount, maxValuesPerColumn);
             var fullDataset = datasets[0];
             var reducedDataset = datasets[1];
 
-            // Вывод полной таблицы
+            // Вывод полной таблицы.
             Console.WriteLine($"\nFull Table (Rows: {fullDataset.Count}):");
             Console.WriteLine($"{string.Join("\t", factorColumns)}\tResult");
             foreach (var row in fullDataset)
@@ -65,7 +118,7 @@ namespace AnovaCleaner
                 Console.WriteLine(row);
             }
 
-            // Вывод уменьшенной таблицы (до очистки)
+            // Вывод уменьшенной таблицы.
             Console.WriteLine($"\nReduced Table (Rows: {reducedDataset.Count}):");
             Console.WriteLine($"{string.Join("\t", factorColumns)}\tResult");
             foreach (var row in reducedDataset)
@@ -73,7 +126,7 @@ namespace AnovaCleaner
                 Console.WriteLine(row);
             }
 
-            // Очистка таблицы
+            // Очистка таблицы.
             var cleanedDataset = CleanDataset(reducedDataset, factorColumns);
             Console.WriteLine($"\nCleaned Table (Rows: {cleanedDataset.Count}):");
             Console.WriteLine($"{string.Join("\t", factorColumns)}\tResult");
@@ -82,11 +135,12 @@ namespace AnovaCleaner
                 Console.WriteLine(row);
             }
 
-            // Сохранение уменьшенной таблицы в файл
+            // Сохранение уменьшенной таблицы в файл.
             SaveDatasetToFile(reducedDataset, outputPath, factorColumns, "Result");
             Console.WriteLine($"\nReduced table saved to {outputPath}");
         }
 
+        // Генерация полной и уменьшенной таблиц.
         private List<List<FactorRow>> GenerateRandomTable(int sizeCategory, int columnCount, int maxValuesPerColumn)
         {
             int rowsToRemove;
@@ -111,14 +165,14 @@ namespace AnovaCleaner
                     throw new ArgumentException("sizeCategory must be 1, 2, or 3");
             }
 
-            // Генерация уникальных значений для каждого фактора
+            // Генерация уникальных значений для каждого фактора.
             List<HashSet<int>> columnValues = Enumerable.Range(0, columnCount)
                 .Select(i => GenerateRandomSet(random, maxValuesPerColumn)).ToList();
 
-            // Полное декартово произведение
+            // Построение полного декартова произведения.
             List<FactorRow> cartesianProduct = CartesianProduct(columnValues);
 
-            // Удаление случайных строк для создания неполной таблицы
+            // Удаление случайных строк для создания неполной таблицы.
             var indicesToRemove = Enumerable.Range(0, cartesianProduct.Count)
                                            .OrderBy(x => random.Next())
                                            .Take(rowsToRemove)
@@ -127,16 +181,17 @@ namespace AnovaCleaner
                 .Where((x, i) => !indicesToRemove.Contains(i))
                 .ToList();
 
-            // Добавление случайных результатов
+            // Добавление случайных результатов к обеим таблицам.
             var fullDatasetWithResults = AddRandomResults(cartesianProduct);
             var reducedDatasetWithResults = AddRandomResults(reducedDataset);
 
             return new List<List<FactorRow>> { fullDatasetWithResults, reducedDatasetWithResults };
         }
 
+        // Метод очистки таблицы (алгоритм из диплома).
         public List<FactorRow> CleanDataset(List<FactorRow> dataset, string[] factorColumns)
         {
-            // Шаг 1: Извлечение уникальных значений факторов
+            // Шаг 1: Извлечение уникальных значений факторов.
             var uniqueValues = new Dictionary<int, HashSet<int>>();
             for (int factorIndex = 0; factorIndex < factorColumns.Length; factorIndex++)
             {
@@ -144,17 +199,17 @@ namespace AnovaCleaner
                     dataset.Select(row => row.FactorValues[factorIndex]));
             }
 
-            // Шаг 2: Построение декартова произведения
+            // Шаг 2: Построение декартова произведения.
             var cartesianProduct = CartesianProduct(uniqueValues.Values.ToList());
 
-            // Шаг 3: Проверка полноты
+            // Шаг 3: Проверка полноты.
             if (IsFull(dataset, cartesianProduct))
             {
                 Console.WriteLine("Dataset is already full. No cleaning needed.");
                 return dataset;
             }
 
-            // Шаг 4: Выделение редких значений
+            // Шаг 4: Выделение редких значений.
             var frequency = new Dictionary<int, Dictionary<int, int>>();
             for (int factorIndex = 0; factorIndex < factorColumns.Length; factorIndex++)
             {
@@ -165,13 +220,13 @@ namespace AnovaCleaner
                 }
             }
 
-            // Шаг 5: Генерация вариантов очистки
+            // Шаг 5: Генерация вариантов очистки.
             var alternatives = new List<(List<FactorRow> cleanedData, int removedRows)>();
             foreach (var factorIndex in frequency.Keys)
             {
                 var rareValues = frequency[factorIndex]
                     .OrderBy(kv => kv.Value)
-                    .Take(1) // Берем только одно самое редкое значение
+                    .Take(1) // Берем только одно самое редкое значение.
                     .Select(kv => kv.Key)
                     .ToList();
 
@@ -185,7 +240,7 @@ namespace AnovaCleaner
                 }
             }
 
-            // Шаг 6: Повторная проверка полноты
+            // Шаг 6: Повторная проверка полноты.
             List<FactorRow> bestCleanedData = null;
             int minRemovedRows = int.MaxValue;
 
@@ -198,7 +253,7 @@ namespace AnovaCleaner
                 }
             }
 
-            // Шаг 7: Рекурсивная очистка, если необходимо
+            // Шаг 7: Рекурсивная очистка, если необходимо.
             if (bestCleanedData == null)
             {
                 Console.WriteLine("No single removal achieved fullness. Trying recursive cleaning...");
@@ -216,39 +271,43 @@ namespace AnovaCleaner
             if (bestCleanedData == null)
             {
                 Console.WriteLine("Failed to achieve full structure.");
-                return dataset; // Возвращаем исходные данные, если не удалось очистить
+                return dataset; // Возвращаем исходные данные, если не удалось очистить.
             }
 
             Console.WriteLine($"Removed {dataset.Count - bestCleanedData.Count} rows to achieve full structure.");
             return bestCleanedData;
         }
 
+        // Проверка, является ли таблица полной (все комбинации присутствуют).
         public bool IsFull(List<FactorRow> dataset, List<FactorRow> cartesianProduct)
         {
             var datasetCombinations = new HashSet<string>(
-                dataset.Select(row => string.Join("|", row.FactorValues)));
+                dataset.Select(row => string.Join("|", row.FactorValues.Take(row.FactorValues.Length - 1))));
             var requiredCombinations = new HashSet<string>(
                 cartesianProduct.Select(row => string.Join("|", row.FactorValues)));
 
             return requiredCombinations.All(comb => datasetCombinations.Contains(comb));
         }
 
+        // Добавление случайного результата в каждую строку.
         private List<FactorRow> AddRandomResults(List<FactorRow> dataset)
         {
             return dataset.Select(row =>
             {
                 var newValues = row.FactorValues.ToList();
-                newValues.Add((int)(random.NextDouble() * 100)); // Случайный результат
+                newValues.Add((int)(random.NextDouble() * 100)); // Случайный результат (0–100).
                 return new FactorRow(newValues.ToArray());
             }).ToList();
         }
 
+        // Генерация случайного набора значений для фактора.
         private HashSet<int> GenerateRandomSet(Random random, int maxValues)
         {
             int count = random.Next(1, maxValues + 1);
             return new HashSet<int>(Enumerable.Range(0, count).Select(_ => random.Next(1, 101)));
         }
 
+        // Построение декартова произведения.
         private List<FactorRow> CartesianProduct(List<HashSet<int>> sets)
         {
             if (sets == null || sets.Count == 0) return new List<FactorRow>();
@@ -257,6 +316,7 @@ namespace AnovaCleaner
             return resultTuples;
         }
 
+        // Рекурсивный метод для построения декартова произведения.
         private void CartesianProductRecursive(List<HashSet<int>> sets, int index, List<int> current, List<FactorRow> result)
         {
             if (index == sets.Count)
@@ -272,6 +332,7 @@ namespace AnovaCleaner
             }
         }
 
+        // Сохранение таблицы в текстовый файл.
         private void SaveDatasetToFile(List<FactorRow> dataset, string filePath, string[] factorColumns, string resultColumn)
         {
             using (StreamWriter writer = new StreamWriter(filePath))
@@ -284,6 +345,7 @@ namespace AnovaCleaner
             }
         }
 
+        // Подсчет размера декартова произведения.
         private long CartesianProductCount(int columnCount, int maxValuesPerColumn)
         {
             long result = 1;
@@ -292,44 +354,6 @@ namespace AnovaCleaner
                 result *= maxValuesPerColumn;
             }
             return result;
-        }
-    }
-
-    public class FactorRow
-    {
-        public int[] FactorValues { get; }
-
-        public FactorRow(int[] values)
-        {
-            FactorValues = values ?? throw new ArgumentNullException(nameof(values));
-        }
-
-        public override string ToString()
-        {
-            return string.Join("\t", FactorValues);
-        }
-
-        public override bool Equals(object obj)
-        {
-            if (obj is FactorRow other)
-            {
-                if (FactorValues.Length != other.FactorValues.Length) return false;
-                return !FactorValues.Where((t, i) => t != other.FactorValues[i]).Any();
-            }
-            return false;
-        }
-
-        public override int GetHashCode()
-        {
-            unchecked
-            {
-                int hash = 17;
-                foreach (var value in FactorValues)
-                {
-                    hash = hash * 23 + value.GetHashCode();
-                }
-                return hash;
-            }
         }
     }
 }
