@@ -135,33 +135,14 @@ namespace AnovaCleaner
                 Console.WriteLine(row);
             }
 
-            // Сохранение уменьшенной таблицы в файл.
-            SaveDatasetToFile(reducedDataset, outputPath, factorColumns, "Result");
-            Console.WriteLine($"\nReduced table saved to {outputPath}");
+            // Сохранение очищенной таблицы в файл.
+            SaveDatasetToFile(cleanedDataset, outputPath, factorColumns, "Result");
+            Console.WriteLine($"\nCleaned table saved to {outputPath}");
         }
 
         // Генерация полной и уменьшенной таблиц.
         private List<List<FactorRow>> GenerateRandomTable(int sizeCategory, int columnCount, int maxValuesPerColumn)
         {
-            // Определяем параметры таблицы.
-            switch (sizeCategory)
-            {
-                case 1:
-                    columnCount = random.Next(2, 4);
-                    maxValuesPerColumn = random.Next(3, 7);
-                    break;
-                case 2:
-                    columnCount = random.Next(3, 5);
-                    maxValuesPerColumn = random.Next(6, 11);
-                    break;
-                case 3:
-                    columnCount = random.Next(2, 5);
-                    maxValuesPerColumn = Math.Min(12, random.Next(8, 13));
-                    break;
-                default:
-                    throw new ArgumentException("sizeCategory must be 1, 2, or 3");
-            }
-
             // Генерация уникальных значений для каждого фактора.
             List<HashSet<int>> columnValues = Enumerable.Range(0, columnCount)
                 .Select(i => GenerateRandomSet(random, maxValuesPerColumn)).ToList();
@@ -170,7 +151,6 @@ namespace AnovaCleaner
             List<FactorRow> cartesianProduct = CartesianProduct(columnValues);
 
             // Удаление случайных строк для создания неполной таблицы.
-            // Используем реальный размер cartesianProduct для расчета rowsToRemove.
             int actualSize = cartesianProduct.Count;
             int minRowsToRemove = Math.Max(0, (int)(actualSize * 0.2) - 1);
             int maxRowsToRemove = (int)(actualSize * 0.5);
@@ -188,13 +168,32 @@ namespace AnovaCleaner
             var fullDatasetWithResults = AddRandomResults(cartesianProduct);
             var reducedDatasetWithResults = AddRandomResults(reducedDataset);
 
+            // Удаление дубликатов из уменьшенной таблицы.
+            reducedDatasetWithResults = reducedDatasetWithResults
+                .GroupBy(row => string.Join(",", row.FactorValues.Take(columnCount)))
+                .Select(g => g.First())
+                .ToList();
+
+            Console.WriteLine($"Generated reduced table with {reducedDatasetWithResults.Count} rows after removing duplicates.");
             return new List<List<FactorRow>> { fullDatasetWithResults, reducedDatasetWithResults };
         }
 
         // Метод очистки таблицы (алгоритм из диплома).
         public List<FactorRow> CleanDataset(List<FactorRow> dataset, string[] factorColumns)
         {
-            // Шаг 1: Извлечение уникальных значений факторов.
+            // Шаг 1: Удаление дубликатов перед началом очистки.
+            int initialCount = dataset.Count;
+            dataset = dataset
+                .GroupBy(row => string.Join(",", row.FactorValues.Take(factorColumns.Length)))
+                .Select(g => g.First())
+                .ToList();
+            int duplicatesRemoved = initialCount - dataset.Count;
+            if (duplicatesRemoved > 0)
+            {
+                Console.WriteLine($"Removed {duplicatesRemoved} duplicate rows before cleaning.");
+            }
+
+            // Шаг 2: Извлечение уникальных значений факторов.
             var uniqueValues = new Dictionary<int, HashSet<int>>();
             for (int factorIndex = 0; factorIndex < factorColumns.Length; factorIndex++)
             {
@@ -202,19 +201,33 @@ namespace AnovaCleaner
                     dataset.Select(row => row.FactorValues[factorIndex]));
             }
 
-            // Шаг 2: Построение декартова произведения.
+            // Шаг 3: Построение декартова произведения.
             var cartesianProduct = CartesianProduct(uniqueValues.Values.ToList());
 
-            // Шаг 3: Проверка полноты.
+            // Шаг 4: Проверка полноты.
             if (IsFull(dataset, cartesianProduct))
             {
                 Console.WriteLine("Dataset is already full. No cleaning needed.");
                 return dataset;
             }
 
-            // Шаг 4: Выделение редких значений.
+            // Шаг 5: Рекурсивная очистка с ограничением глубины.
+            return CleanDatasetRecursive(dataset, cartesianProduct, factorColumns.Length, uniqueValues, 0);
+        }
+
+        // Рекурсивная очистка таблицы с ограничением глубины.
+        private List<FactorRow> CleanDatasetRecursive(List<FactorRow> dataset, List<FactorRow> cartesianProduct, int factorCount, Dictionary<int, HashSet<int>> uniqueValues, int depth)
+        {
+            // Ограничение глубины рекурсии.
+            if (depth > 10)
+            {
+                Console.WriteLine("Failed to achieve full structure due to recursion depth limit.");
+                return dataset;
+            }
+
+            // Шаг 1: Выделение редких значений.
             var frequency = new Dictionary<int, Dictionary<int, int>>();
-            for (int factorIndex = 0; factorIndex < factorColumns.Length; factorIndex++)
+            for (int factorIndex = 0; factorIndex < factorCount; factorIndex++)
             {
                 frequency[factorIndex] = new Dictionary<int, int>();
                 foreach (var value in uniqueValues[factorIndex])
@@ -223,7 +236,7 @@ namespace AnovaCleaner
                 }
             }
 
-            // Шаг 5: Генерация вариантов очистки.
+            // Шаг 2: Генерация вариантов очистки.
             var alternatives = new List<(List<FactorRow> cleanedData, int removedRows)>();
             foreach (var factorIndex in frequency.Keys)
             {
@@ -243,7 +256,7 @@ namespace AnovaCleaner
                 }
             }
 
-            // Шаг 6: Повторная проверка полноты.
+            // Шаг 3: Повторная проверка полноты.
             List<FactorRow> bestCleanedData = null;
             int minRemovedRows = int.MaxValue;
 
@@ -256,13 +269,13 @@ namespace AnovaCleaner
                 }
             }
 
-            // Шаг 7: Рекурсивная очистка, если необходимо.
+            // Шаг 4: Рекурсивная очистка, если необходимо.
             if (bestCleanedData == null)
             {
                 Console.WriteLine("No single removal achieved fullness. Trying recursive cleaning...");
                 foreach (var (cleanedData, _) in alternatives.OrderBy(a => a.removedRows))
                 {
-                    var recursiveResult = CleanDataset(cleanedData, factorColumns);
+                    var recursiveResult = CleanDatasetRecursive(cleanedData, cartesianProduct, factorCount, uniqueValues, depth + 1);
                     if (IsFull(recursiveResult, cartesianProduct))
                     {
                         bestCleanedData = recursiveResult;
@@ -347,7 +360,5 @@ namespace AnovaCleaner
                 }
             }
         }
-
-        
     }
 }

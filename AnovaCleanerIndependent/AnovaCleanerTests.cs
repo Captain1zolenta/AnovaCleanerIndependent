@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using AnovaCleaner; // Импортируем пространство имен для использования FactorRow.
 
 namespace AnovaCleaner.Tests
 {
@@ -70,6 +69,18 @@ namespace AnovaCleaner.Tests
             var reducedDataset = fullDataset
                 .Where((x, i) => !indicesToRemove.Contains(i))
                 .ToList();
+
+            // Удаление дубликатов из уменьшенной таблицы.
+            int initialReducedCount = reducedDataset.Count;
+            reducedDataset = reducedDataset
+                .GroupBy(row => string.Join(",", row.FactorValues.Take(testCase.FactorCount)))
+                .Select(g => g.First())
+                .ToList();
+            int duplicatesRemoved = initialReducedCount - reducedDataset.Count;
+            if (duplicatesRemoved > 0)
+            {
+                Console.WriteLine($"Removed {duplicatesRemoved} duplicate rows from reduced dataset.");
+            }
 
             // Очистка таблицы.
             var cleaner = new AnovaCleanerConsole();
