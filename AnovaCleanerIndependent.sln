@@ -1,0 +1,32 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.35706.149
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AnovaCleaner", "AnovaCleanerIndependent\AnovaCleaner.csproj", "{3FFFCDAB-F3BB-4959-BC1E-25D9EBAE1443}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{F632D3D8-50A4-472D-BE3D-627D6A564695}"
+	ProjectSection(SolutionItems) = preProject
+		AnovaCleanerIndependent\AnovaCleaner.csproj = AnovaCleanerIndependent\AnovaCleaner.csproj
+		AnovaCleanerIndependent\AnovaCleanerConsole.cs = AnovaCleanerIndependent\AnovaCleanerConsole.cs
+		AnovaCleanerIndependent\AnovaCleanerTests.cs = AnovaCleanerIndependent\AnovaCleanerTests.cs
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{3FFFCDAB-F3BB-4959-BC1E-25D9EBAE1443}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3FFFCDAB-F3BB-4959-BC1E-25D9EBAE1443}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3FFFCDAB-F3BB-4959-BC1E-25D9EBAE1443}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3FFFCDAB-F3BB-4959-BC1E-25D9EBAE1443}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {D37C7448-7202-4C7B-B53A-F969E685B89E}
+	EndGlobalSection
+EndGlobal
