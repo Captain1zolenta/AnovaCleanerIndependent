@@ -211,15 +211,26 @@ namespace AnovaCleaner
                 return dataset;
             }
 
-            // Шаг 5: Рекурсивная очистка с ограничением глубины.
-            return CleanDatasetRecursive(dataset, cartesianProduct, factorColumns.Length, uniqueValues, 0);
+            // Шаг 5: Кэширование счётчиков редких элементов для оптимизации.
+            var frequencyCache = new Dictionary<int, Dictionary<int, int>>();
+            for (int factorIndex = 0; factorIndex < factorColumns.Length; factorIndex++)
+            {
+                frequencyCache[factorIndex] = new Dictionary<int, int>();
+                foreach (var value in uniqueValues[factorIndex])
+                {
+                    frequencyCache[factorIndex][value] = dataset.Count(row => row.FactorValues[factorIndex] == value);
+                }
+            }
+
+            // Шаг 6: Рекурсивная очистка с использованием кэша.
+            return CleanDatasetRecursive(dataset, cartesianProduct, factorColumns.Length, uniqueValues, frequencyCache, 0);
         }
 
-        // Рекурсивная очистка таблицы с ограничением глубины.
-        private List<FactorRow> CleanDatasetRecursive(List<FactorRow> dataset, List<FactorRow> cartesianProduct, int factorCount, Dictionary<int, HashSet<int>> uniqueValues, int depth)
+        // Рекурсивная очистка таблицы с ограничением глубины и использованием кэша.
+        private List<FactorRow> CleanDatasetRecursive(List<FactorRow> dataset, List<FactorRow> cartesianProduct, int factorCount, Dictionary<int, HashSet<int>> uniqueValues, Dictionary<int, Dictionary<int, int>> frequencyCache, int depth)
         {
-            // Ограничение глубины рекурсии (увеличено до 20 для сложных случаев).
-            if (depth > 20)
+            // Ограничение глубины рекурсии (увеличено до 50 для сложных случаев).
+            if (depth > 50) // Увеличен лимит с 20 до 50 для обработки сложных случаев.
             {
                 Console.WriteLine("Failed to achieve full structure due to recursion depth limit.");
                 return dataset;
@@ -232,54 +243,65 @@ namespace AnovaCleaner
                 dataset.Select(row => string.Join("|", row.FactorValues.Take(factorCount))));
             missingCombinations.ExceptWith(presentCombinations);
 
+            Console.WriteLine($"Depth {depth}: Missing combinations ({missingCombinations.Count}): {string.Join(", ", missingCombinations)}");
+
             if (missingCombinations.Count == 0)
             {
                 Console.WriteLine("Dataset is now full after cleaning.");
                 return dataset;
             }
 
-            // Шаг 2: Выделение редких или конфликтующих комбинаций.
-            var frequency = new Dictionary<int, Dictionary<int, int>>();
+            // Шаг 2: Анализ отсутствующих комбинаций для выбора целевого фактора.
+            var missingCountPerFactor = new Dictionary<int, int>();
             for (int factorIndex = 0; factorIndex < factorCount; factorIndex++)
             {
-                frequency[factorIndex] = new Dictionary<int, int>();
-                foreach (var value in uniqueValues[factorIndex])
-                {
-                    frequency[factorIndex][value] = dataset.Count(row => row.FactorValues[factorIndex] == value);
-                }
+                missingCountPerFactor[factorIndex] = missingCombinations
+                    .Count(comb => comb.Split('|')[factorIndex] != presentCombinations
+                        .Select(p => p.Split('|')[factorIndex]).Distinct().FirstOrDefault());
             }
 
-            // Шаг 3: Выбираем фактор с наименьшим покрытием для удаления.
-            int targetFactorIndex = frequency.Keys
-                .OrderBy(f => frequency[f].Values.Sum() / (double)uniqueValues[f].Count)
-                .First();
-            var rareValues = frequency[targetFactorIndex]
-                .OrderBy(kv => kv.Value)
-                .Take(1)
-                .Select(kv => kv.Key)
+            // Шаг 3: Выбираем фактор с наибольшим числом отсутствующих комбинаций.
+            int targetFactorIndex = missingCountPerFactor.OrderByDescending(kv => kv.Value).First().Key;
+            var targetValues = missingCombinations
+                .Select(comb => int.Parse(comb.Split('|')[targetFactorIndex]))
+                .Distinct()
                 .ToList();
 
-            // Шаг 4: Удаляем строки с редкими значениями.
-            var alternatives = new List<(List<FactorRow> cleanedData, int removedRows)>();
-            foreach (var rareValue in rareValues)
+            // Шаг 4: Удаляем строки с значениями, связанными с наиболее отсутствующими комбинациями.
+            var alternatives = new List<(List<FactorRow> cleanedData, int removedRows, Dictionary<int, Dictionary<int, int>> newCache)>();
+            foreach (var targetValue in targetValues.Take(1)) // Берем первое значение для текущей итерации
             {
                 var cleanedData = dataset
-                    .Where(row => row.FactorValues[targetFactorIndex] != rareValue)
+                    .Where(row => row.FactorValues[targetFactorIndex] != targetValue)
                     .ToList();
                 int removedRows = dataset.Count - cleanedData.Count;
-                alternatives.Add((cleanedData, removedRows));
+
+                // Обновление кэша счётчиков после удаления строк.
+                var newFrequencyCache = new Dictionary<int, Dictionary<int, int>>(frequencyCache);
+                newFrequencyCache[targetFactorIndex] = new Dictionary<int, int>(frequencyCache[targetFactorIndex]);
+                foreach (var row in dataset.Where(row => row.FactorValues[targetFactorIndex] == targetValue))
+                {
+                    for (int i = 0; i < factorCount; i++)
+                    {
+                        if (!newFrequencyCache[i].ContainsKey(row.FactorValues[i])) continue;
+                        newFrequencyCache[i][row.FactorValues[i]]--;
+                    }
+                }
+                alternatives.Add((cleanedData, removedRows, newFrequencyCache));
             }
 
             // Шаг 5: Повторная проверка полноты.
             List<FactorRow> bestCleanedData = null;
             int minRemovedRows = int.MaxValue;
+            Dictionary<int, Dictionary<int, int>> bestCache = frequencyCache;
 
-            foreach (var (cleanedData, removedRows) in alternatives)
+            foreach (var (cleanedData, removedRows, newCache) in alternatives)
             {
                 if (IsFull(cleanedData, cartesianProduct) && removedRows < minRemovedRows)
                 {
                     bestCleanedData = cleanedData;
                     minRemovedRows = removedRows;
+                    bestCache = new Dictionary<int, Dictionary<int, int>>(newCache);
                 }
             }
 
@@ -287,9 +309,9 @@ namespace AnovaCleaner
             if (bestCleanedData == null)
             {
                 Console.WriteLine("No single removal achieved fullness. Trying recursive cleaning...");
-                foreach (var (cleanedData, _) in alternatives.OrderBy(a => a.removedRows))
+                foreach (var (cleanedData, _, newCache) in alternatives.OrderBy(a => a.removedRows))
                 {
-                    var recursiveResult = CleanDatasetRecursive(cleanedData, cartesianProduct, factorCount, uniqueValues, depth + 1);
+                    var recursiveResult = CleanDatasetRecursive(cleanedData, cartesianProduct, factorCount, uniqueValues, newCache, depth + 1);
                     if (IsFull(recursiveResult, cartesianProduct))
                     {
                         bestCleanedData = recursiveResult;
