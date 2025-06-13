@@ -76,7 +76,7 @@ namespace AnovaCleaner.Tests
                 .GroupBy(row => string.Join(",", row.FactorValues.Take(testCase.FactorCount)))
                 .Select(g => g.First())
                 .ToList();
-            int duplicatesRemoved = initialReducedCount - reducedDataset.Count;
+            int duplicatesRemoved = initialReducedCount - reducedDataset.Count();
             if (duplicatesRemoved > 0)
             {
                 Console.WriteLine($"Removed {duplicatesRemoved} duplicate rows from reduced dataset.");
@@ -92,10 +92,10 @@ namespace AnovaCleaner.Tests
             bool isFull = cleaner.IsFull(cleanedDataset, finalCartesianProduct);
 
             // Вывод результатов теста.
-            int removedRows = reducedDataset.Count - cleanedDataset.Count;
+            int removedRows = reducedDataset.Count() - cleanedDataset.Count();
             Console.WriteLine($"Original Rows: {fullDataset.Count}");
-            Console.WriteLine($"Reduced Rows: {reducedDataset.Count}");
-            Console.WriteLine($"Cleaned Rows: {cleanedDataset.Count}");
+            Console.WriteLine($"Reduced Rows: {reducedDataset.Count()}");
+            Console.WriteLine($"Cleaned Rows: {cleanedDataset.Count()}");
             Console.WriteLine($"Removed During Cleaning: {removedRows}");
             Console.WriteLine($"Structure Full: {(isFull ? "Yes" : "No")}");
         }
