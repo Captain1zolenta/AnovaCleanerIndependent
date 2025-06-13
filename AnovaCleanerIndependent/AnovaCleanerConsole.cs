@@ -201,43 +201,63 @@ namespace AnovaCleaner
         private List<FactorRow> CleanDatasetBackward(List<FactorRow> dataset, List<FactorRow> cartesianProduct, int factorCount)
         {
             var currentDataset = new List<FactorRow>(dataset);
-            var missing = GetMissingCombinations(currentDataset, cartesianProduct);
+            var bestDataset = new List<FactorRow>(currentDataset); // Сохраняем лучший набор
+            int minMissingCount = GetMissingCombinations(currentDataset, cartesianProduct).Count;
 
-            if (missing.Count == 0) return currentDataset; // Если таблица уже полная, возвращаем её
+            if (minMissingCount == 0) return currentDataset; // Если таблица уже полная, возвращаем её
 
-            for (int i = 0; i < 100 && missing.Count > 0; i++) // Ограничение в 100 итераций
+            for (int i = 0; i < 500; i++) // Удаляем строки до достижения лимита
             {
-                var bestRow = currentDataset[0];
+                if (currentDataset.Count <= 1) break; // Прерываем, если осталась 1 строка
+
+                var bestRow = currentDataset.Count > 0 ? currentDataset[0] : null;
                 int minNewMissing = int.MaxValue;
 
-                // Поиск строки, удаление которой минимизирует количество новых пропусков
+                // Текущие покрытые комбинации
+                var currentCombinations = new HashSet<string>(
+                    currentDataset.Select(row => string.Join("|", row.FactorValues.Take(factorCount))));
+
+                // Поиск строки для удаления
                 foreach (var row in currentDataset)
                 {
                     var tempDataset = currentDataset.Where(r => !r.Equals(row)).ToList();
-                    var newMissing = GetMissingCombinations(tempDataset, cartesianProduct).Count;
-                    if (newMissing < minNewMissing)
+                    if (tempDataset.Count == 0) continue; // Пропускаем, если удаление оставит пустой набор
+
+                    var newCombinations = new HashSet<string>(
+                        tempDataset.Select(r => string.Join("|", r.FactorValues.Take(factorCount))));
+                    int newMissingCount = GetMissingCombinations(tempDataset, cartesianProduct).Count;
+
+                    // Выбираем строку, чьё удаление минимизирует пропуски
+                    if (newMissingCount < minNewMissing)
                     {
-                        minNewMissing = newMissing;
+                        minNewMissing = newMissingCount;
                         bestRow = row;
                     }
                 }
 
+                if (bestRow == null) break; // Если нет подходящей строки для удаления, прерываем
+
                 currentDataset.Remove(bestRow);
                 Console.WriteLine($"Глубина {i}: Удалена строка, оставшиеся пропуски: {minNewMissing}");
 
-                // Проверка полноты после удаления
+                // Обновляем лучший набор, если текущий имеет меньше пропусков
+                int currentMissingCount = GetMissingCombinations(currentDataset, cartesianProduct).Count;
+                if (currentMissingCount < minMissingCount)
+                {
+                    minMissingCount = currentMissingCount;
+                    bestDataset = new List<FactorRow>(currentDataset);
+                }
+
+                // Проверка полноты
                 if (IsFull(currentDataset, cartesianProduct))
                 {
                     Console.WriteLine("Таблица стала полной после удаления.");
                     return currentDataset;
                 }
-
-                missing = GetMissingCombinations(currentDataset, cartesianProduct);
-                if (missing.Count == minNewMissing) break; // Остановка, если прогресс отсутствует
             }
 
-            Console.WriteLine("Не удалось достичь полной структуры из-за лимита итераций.");
-            return currentDataset;
+            Console.WriteLine($"Лучшее количество пропусков: {minMissingCount}");
+            return bestDataset; // Возвращаем набор с минимальным числом пропусков
         }
 
         // Получение списка отсутствующих комбинаций
