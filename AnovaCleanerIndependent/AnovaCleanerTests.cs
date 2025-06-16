@@ -4,12 +4,11 @@ using System.Linq;
 
 namespace AnovaCleaner.Tests
 {
-    // Класс для хранения параметров тестового случая.
     public class TestCase
     {
-        public int FactorCount { get; } // Количество факторов.
-        public int[] Levels { get; } // Количество уровней для каждого фактора.
-        public double MissingPercentage { get; } // Процент пропущенных комбинаций.
+        public int FactorCount { get; }
+        public int[] Levels { get; }
+        public double MissingPercentage { get; }
 
         public TestCase(int factorCount, int[] levels, double missingPercentage)
         {
@@ -19,24 +18,21 @@ namespace AnovaCleaner.Tests
         }
     }
 
-    // Класс для выполнения тестов очистки таблиц.
     public class AnovaCleanerTests
     {
         private static readonly Random random = new Random();
 
-        // Основной метод для запуска всех тестов.
         public static void RunTests()
         {
             Console.WriteLine("\nRunning ANOVA Cleaner Tests...");
 
-            // Список тестовых случаев (взяты из главы 4 диплома).
             var testCases = new List<TestCase>
             {
-                new TestCase(2, new[] { 3, 2 }, 0.10), // Уменьшен процент пропусков до 10%
-                new TestCase(3, new[] { 2, 2, 2 }, 0.15), // Уменьшен до 15%
-                new TestCase(3, new[] { 3, 3, 2 }, 0.20), // Уменьшен до 20%
-                new TestCase(2, new[] { 4, 3 }, 0.10), // Уменьшен до 10%
-                new TestCase(3, new[] { 2, 2, 3 }, 0.15), // Уменьшен до 15%
+                new TestCase(2, new[] { 3, 2 }, 0.10),
+                new TestCase(3, new[] { 2, 2, 2 }, 0.15),
+                new TestCase(3, new[] { 3, 3, 2 }, 0.20),
+                new TestCase(2, new[] { 4, 3 }, 0.10),
+                new TestCase(3, new[] { 2, 2, 3 }, 0.15)
             };
 
             int testNumber = 1;
@@ -46,23 +42,18 @@ namespace AnovaCleaner.Tests
             }
         }
 
-        // Метод для выполнения одного теста.
         private static void RunTest(int testNumber, TestCase testCase)
         {
             Console.WriteLine($"\nTest #{testNumber}: Factors={testCase.FactorCount}, Levels={string.Join("x", testCase.Levels)}, Missing={testCase.MissingPercentage * 100:F1}%");
 
-            // Генерация значений факторов.
             var columnValues = Enumerable.Range(0, testCase.FactorCount)
                 .Select(i => new HashSet<int>(Enumerable.Range(1, testCase.Levels[i])))
                 .ToList();
-
-            // Построение полной таблицы.
             var cartesianProduct = CartesianProduct(columnValues);
             var fullDataset = AddRandomResults(cartesianProduct);
 
-            // Удаление строк для создания неполной таблицы с ограничением минимального покрытия.
             int totalCombinations = cartesianProduct.Count;
-            int rowsToRemove = Math.Min((int)(totalCombinations * testCase.MissingPercentage), totalCombinations - testCase.FactorCount); // Ограничиваем удаление
+            int rowsToRemove = Math.Min((int)(totalCombinations * testCase.MissingPercentage), totalCombinations - testCase.FactorCount);
             var indicesToRemove = Enumerable.Range(0, fullDataset.Count)
                                            .OrderBy(x => random.Next())
                                            .Take(rowsToRemove)
@@ -71,7 +62,6 @@ namespace AnovaCleaner.Tests
                 .Where((x, i) => !indicesToRemove.Contains(i))
                 .ToList();
 
-            // Удаление дубликатов из уменьшенной таблицы.
             int initialReducedCount = reducedDataset.Count;
             reducedDataset = reducedDataset
                 .GroupBy(row => string.Join(",", row.FactorValues.Take(testCase.FactorCount)))
@@ -83,25 +73,22 @@ namespace AnovaCleaner.Tests
                 Console.WriteLine($"Removed {duplicatesRemoved} duplicate rows from reduced dataset.");
             }
 
-            // Очистка таблицы.
             var cleaner = new AnovaCleanerConsole();
             var factorColumns = Enumerable.Range(0, testCase.FactorCount).Select(i => $"Factor{i + 1}").ToArray();
             var cleanedDataset = cleaner.CleanDataset(reducedDataset, factorColumns);
 
-            // Проверка полноты после очистки.
             var finalCartesianProduct = CartesianProduct(columnValues);
             bool isFull = cleaner.IsFull(cleanedDataset, finalCartesianProduct);
 
-            // Вывод результатов теста.
             int removedRows = reducedDataset.Count() - cleanedDataset.Count();
             Console.WriteLine($"Original Rows: {fullDataset.Count}");
             Console.WriteLine($"Reduced Rows: {reducedDataset.Count()}");
             Console.WriteLine($"Cleaned Rows: {cleanedDataset.Count()}");
             Console.WriteLine($"Removed During Cleaning: {removedRows}");
+            Console.WriteLine($"Lost Combinations: {cleaner.GetMissingCombinations(cleanedDataset, finalCartesianProduct).Count}");
             Console.WriteLine($"Structure Full: {(isFull ? "Yes" : "No")}");
         }
 
-        // Построение декартова произведения.
         private static List<FactorRow> CartesianProduct(List<HashSet<int>> sets)
         {
             if (sets == null || sets.Count == 0) return new List<FactorRow>();
@@ -110,7 +97,6 @@ namespace AnovaCleaner.Tests
             return resultTuples;
         }
 
-        // Рекурсивный метод для построения декартова произведения.
         private static void CartesianProductRecursive(List<HashSet<int>> sets, int index, List<int> current, List<FactorRow> result)
         {
             if (index == sets.Count)
@@ -126,7 +112,6 @@ namespace AnovaCleaner.Tests
             }
         }
 
-        // Добавление случайного результата в строки.
         private static List<FactorRow> AddRandomResults(List<FactorRow> dataset)
         {
             return dataset.Select(row =>
