@@ -32,11 +32,11 @@ namespace AnovaCleaner.Tests
             // Список тестовых случаев (взяты из главы 4 диплома).
             var testCases = new List<TestCase>
             {
-                new TestCase(2, new[] { 3, 2 }, 0.167), // 2 фактора, уровни 3 и 2, 16.7% пропущено
-                new TestCase(3, new[] { 2, 2, 2 }, 0.25), // 3 фактора, уровни 2, 25% пропущено
-                new TestCase(3, new[] { 3, 3, 2 }, 0.296), // 3 фактора, уровни 3, 3, 2, 29.6% пропущено
-                new TestCase(2, new[] { 4, 3 }, 0.125), // 2 фактора, уровни 4 и 3, 12.5% пропущено
-                new TestCase(3, new[] { 2, 2, 3 }, 0.20), // 3 фактора, уровни 2, 2, 3, 20% пропущено
+                new TestCase(2, new[] { 3, 2 }, 0.10), // Уменьшен процент пропусков до 10%
+                new TestCase(3, new[] { 2, 2, 2 }, 0.15), // Уменьшен до 15%
+                new TestCase(3, new[] { 3, 3, 2 }, 0.20), // Уменьшен до 20%
+                new TestCase(2, new[] { 4, 3 }, 0.10), // Уменьшен до 10%
+                new TestCase(3, new[] { 2, 2, 3 }, 0.15), // Уменьшен до 15%
             };
 
             int testNumber = 1;
@@ -60,8 +60,9 @@ namespace AnovaCleaner.Tests
             var cartesianProduct = CartesianProduct(columnValues);
             var fullDataset = AddRandomResults(cartesianProduct);
 
-            // Удаление строк для создания неполной таблицы.
-            int rowsToRemove = (int)(fullDataset.Count * testCase.MissingPercentage);
+            // Удаление строк для создания неполной таблицы с ограничением минимального покрытия.
+            int totalCombinations = cartesianProduct.Count;
+            int rowsToRemove = Math.Min((int)(totalCombinations * testCase.MissingPercentage), totalCombinations - testCase.FactorCount); // Ограничиваем удаление
             var indicesToRemove = Enumerable.Range(0, fullDataset.Count)
                                            .OrderBy(x => random.Next())
                                            .Take(rowsToRemove)

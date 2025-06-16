@@ -194,11 +194,11 @@ namespace AnovaCleaner
             var cartesianProductWithResults = AddRandomResults(cartesianProduct);
 
             // Вызов метода очистки на основе частоты.
-            return CleanDatasetFrequencyBased(dataset, factorColumns.Length);
+            return CleanDatasetFrequencyBased(dataset, factorColumns.Length, cartesianProduct);
         }
 
         // Очистка таблицы на основе частоты встречаемости уникальных значений
-        private List<FactorRow> CleanDatasetFrequencyBased(List<FactorRow> dataset, int factorCount)
+        private List<FactorRow> CleanDatasetFrequencyBased(List<FactorRow> dataset, int factorCount, List<FactorRow> cartesianProduct)
         {
             // Генерируем словари с частотой встречаемости уникальных значений каждой колонки
             var frequencyDicts = new Dictionary<int, Dictionary<int, int>>();
@@ -245,25 +245,14 @@ namespace AnovaCleaner
 
             // Повторяем процесс для каждой копии
             var bestDataset = new List<FactorRow>(dataset);
+            long minCartesianSize = long.MaxValue;
             int minDifference = int.MaxValue;
-
-            // Заново получаем частоту уникальных значений для всех кандидатов
-            var newFreqDicts = new Dictionary<int, Dictionary<int, int>>();
-            for (int col = 0; col < factorCount; col++)
-            {
-                var freqDict = new Dictionary<int, int>();
-                foreach (var row in dataset) // Используем исходный датасет для начальной инициализации
-                {
-                    int value = row.FactorValues[col];
-                    freqDict[value] = freqDict.GetValueOrDefault(value, 0) + 1;
-                }
-                newFreqDicts[col] = freqDict;
-            }
+            int minMissingCount = GetMissingCombinations(dataset, cartesianProduct).Count;
 
             foreach (var candidate in candidateDatasets)
             {
-                // Обновляем частоты для текущего кандидата
-                var tempFreqDicts = new Dictionary<int, Dictionary<int, int>>(newFreqDicts);
+                // Заново получаем частоту уникальных значений каждой колонки
+                var newFreqDicts = new Dictionary<int, Dictionary<int, int>>();
                 for (int col = 0; col < factorCount; col++)
                 {
                     var freqDict = new Dictionary<int, int>();
@@ -272,41 +261,67 @@ namespace AnovaCleaner
                         int value = row.FactorValues[col];
                         freqDict[value] = freqDict.GetValueOrDefault(value, 0) + 1;
                     }
-                    tempFreqDicts[col] = freqDict;
+                    newFreqDicts[col] = freqDict;
                 }
 
-                // Вычисляем размер полного Декартова произведения
+                // Считаем произведение количеств уникальных значений каждой колонки
                 long cartesianSize = 1;
-                foreach (var freqDict in tempFreqDicts.Values)
+                foreach (var freqDict in newFreqDicts.Values)
                 {
                     cartesianSize *= freqDict.Count;
                 }
 
-                // Разность между размером Декартова произведения и размером датасета
+                // Рассчитываем разность между размером полного Декартова произведения и размером копии датасета
                 int difference = (int)(cartesianSize - candidate.Count);
+                int missingCount = GetMissingCombinations(candidate, cartesianProduct).Count;
 
-                if (difference < minDifference)
+                // Выбираем кандидата с минимальной разностью и минимальным числом пропусков
+                if (difference < minDifference ||
+                    (difference == minDifference && missingCount < minMissingCount) ||
+                    (difference == minDifference && missingCount == minMissingCount && cartesianSize < minCartesianSize))
                 {
                     minDifference = difference;
+                    minMissingCount = missingCount;
+                    minCartesianSize = cartesianSize;
                     bestDataset = new List<FactorRow>(candidate);
                 }
             }
 
-            // Если разность равна 0, это решение
-            if (minDifference == 0)
+            // Если разность равна 0 или число пропусков не увеличилось, это решение
+            if (minDifference == 0 || minMissingCount >= GetMissingCombinations(dataset, cartesianProduct).Count)
             {
                 return bestDataset;
             }
 
-            // Если разность больше 0, повторяем для лучших кандидатов
-            if (minDifference > 0)
+            // Если разность больше 0 и число пропусков уменьшилось, повторяем для лучших кандидатов
+            if (minDifference > 0 && minMissingCount < GetMissingCombinations(dataset, cartesianProduct).Count)
             {
                 var bestCandidates = candidateDatasets.Where(c =>
-                    (long)(newFreqDicts.Sum(kv => kv.Value.Count) - c.Count) == minDifference).ToList();
+                {
+                    var tempFreqDicts = new Dictionary<int, Dictionary<int, int>>();
+                    for (int col = 0; col < factorCount; col++)
+                    {
+                        var freqDict = new Dictionary<int, int>();
+                        foreach (var row in c)
+                        {
+                            int value = row.FactorValues[col];
+                            freqDict[value] = freqDict.GetValueOrDefault(value, 0) + 1;
+                        }
+                        tempFreqDicts[col] = freqDict;
+                    }
+                    long tempCartesianSize = 1;
+                    foreach (var freqDict in tempFreqDicts.Values)
+                    {
+                        tempCartesianSize *= freqDict.Count;
+                    }
+                    int tempDifference = (int)(tempCartesianSize - c.Count);
+                    int tempMissingCount = GetMissingCombinations(c, cartesianProduct).Count;
+                    return tempDifference == minDifference && tempMissingCount == minMissingCount;
+                }).ToList();
+
                 foreach (var candidate in bestCandidates)
                 {
-                    var recursiveResult = CleanDatasetFrequencyBased(candidate, factorCount);
-                    long recursiveCartesianSize = 1;
+                    var recursiveResult = CleanDatasetFrequencyBased(candidate, factorCount, cartesianProduct);
                     var recursiveFreqDicts = new Dictionary<int, Dictionary<int, int>>();
                     for (int col = 0; col < factorCount; col++)
                     {
@@ -318,14 +333,20 @@ namespace AnovaCleaner
                         }
                         recursiveFreqDicts[col] = freqDict;
                     }
+                    long recursiveCartesianSize = 1;
                     foreach (var freqDict in recursiveFreqDicts.Values)
                     {
                         recursiveCartesianSize *= freqDict.Count;
                     }
                     int recursiveDifference = (int)(recursiveCartesianSize - recursiveResult.Count);
-                    if (recursiveDifference < minDifference)
+                    int recursiveMissingCount = GetMissingCombinations(recursiveResult, cartesianProduct).Count;
+                    if (recursiveDifference < minDifference ||
+                        (recursiveDifference == minDifference && recursiveMissingCount < minMissingCount) ||
+                        (recursiveDifference == minDifference && recursiveMissingCount == minMissingCount && recursiveCartesianSize < minCartesianSize))
                     {
                         minDifference = recursiveDifference;
+                        minMissingCount = recursiveMissingCount;
+                        minCartesianSize = recursiveCartesianSize;
                         bestDataset = recursiveResult;
                     }
                 }
