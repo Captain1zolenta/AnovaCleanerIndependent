@@ -5,9 +5,7 @@ using System.Linq;
 
 namespace AnovaCleaner
 {
-    /// <summary>
-    /// Класс FactorRow представляет строку таблицы с значениями факторов и результатом.
-    /// </summary>
+    // Класс FactorRow представляет строку таблицы с значениями факторов и результатом.
     public class FactorRow
     {
         // Массив значений: первые N элементов — значения факторов, последний — результат.
@@ -50,17 +48,13 @@ namespace AnovaCleaner
         }
     }
 
-    /// <summary>
-    /// Основной класс консольного приложения для очистки таблиц ANOVA.
-    /// </summary>
+    // Основной класс консольного приложения для очистки таблиц ANOVA.
     public class AnovaCleanerConsole
     {
         private static readonly Random random = new Random();
 
-        /// <summary>
-        /// Точка входа в приложение.
-        /// </summary>
-        public static void Main(string[] args)
+        // Точка входа в приложение.
+        public static void Main(string[] _)
         {
             Console.WriteLine("ANOVA Cleaner Console");
             Console.WriteLine("Enter size category (1, 2, or 3):");
@@ -85,9 +79,7 @@ namespace AnovaCleaner
             AnovaCleaner.Tests.AnovaCleanerTests.RunTests();
         }
 
-        /// <summary>
-        /// Метод для генерации, уменьшения и очистки таблицы.
-        /// </summary>
+        // Метод для генерации, уменьшения и очистки таблицы.
         public void GenerateAndCleanTable(string outputPath, int sizeCategory)
         {
             // Определяем параметры таблицы в зависимости от категории.
@@ -148,9 +140,7 @@ namespace AnovaCleaner
             Console.WriteLine($"\nTable saved to {outputPath}");
         }
 
-        /// <summary>
-        /// Генерация полной и уменьшенной таблиц.
-        /// </summary>
+        // Генерация полной и уменьшенной таблиц.
         private List<List<FactorRow>> GenerateRandomTable(int sizeCategory, int columnCount, int maxValuesPerColumn)
         {
             // Генерация уникальных значений для каждого фактора.
@@ -189,9 +179,7 @@ namespace AnovaCleaner
             return new List<List<FactorRow>> { fullDatasetWithResults, reducedDatasetWithResults };
         }
 
-        /// <summary>
-        /// Метод очистки таблицы (алгоритм из диплома).
-        /// </summary>
+        // Метод очистки таблицы (алгоритм из диплома).
         public List<FactorRow> CleanDataset(List<FactorRow> dataset, string[] factorColumns)
         {
             // Шаг 1: Удаление дубликатов перед началом очистки.
@@ -241,9 +229,7 @@ namespace AnovaCleaner
             return CleanDatasetRecursive(dataset, cartesianProduct, factorColumns.Length, uniqueValues, frequencyCache, 0);
         }
 
-        /// <summary>
-        /// Рекурсивная очистка таблицы с ограничением глубины и использованием кэша.
-        /// </summary>
+        // Рекурсивная очистка таблицы с ограничением глубины и использованием кэша.
         private List<FactorRow> CleanDatasetRecursive(
             List<FactorRow> dataset,
             List<FactorRow> cartesianProduct,
@@ -266,7 +252,8 @@ namespace AnovaCleaner
                 dataset.Select(r => string.Join("|", r.FactorValues.Take(factorCount))));
             missingCombinations.ExceptWith(presentCombinations);
 
-            Console.WriteLine($"Depth {depth}: Missing combinations ({missingCombinations.Count}): {string.Join(", ", missingCombinations)}");
+            int originalMissingCount = missingCombinations.Count;
+            Console.WriteLine($"Depth {depth}: Missing combinations ({originalMissingCount}): {string.Join(", ", missingCombinations)}");
 
             if (missingCombinations.Count == 0)
             {
@@ -329,24 +316,53 @@ namespace AnovaCleaner
 
             Console.WriteLine("No single removal achieved fullness. Trying recursive cleaning...");
 
-            // Рекурсивные попытки.
+            // Рекурсивные попытки с проверкой прогресса.
+            List<FactorRow> bestResult = dataset;
+            int bestMissingCount = originalMissingCount;
+
             foreach (var (cleanedData, newCache) in alternatives)
             {
-                var recursiveResult = CleanDatasetRecursive(cleanedData, cartesianProduct, factorCount, uniqueValues, newCache, depth + 1);
-                if (IsFull(recursiveResult, cartesianProduct))
+                var missingAfter = new HashSet<string>(
+                    cartesianProduct.Select(r => string.Join("|", r.FactorValues)));
+                var presentAfter = new HashSet<string>(
+                    cleanedData.Select(r => string.Join("|", r.FactorValues.Take(factorCount))));
+                missingAfter.ExceptWith(presentAfter);
+                int newMissingCount = missingAfter.Count;
+
+                if (newMissingCount < bestMissingCount)
                 {
-                    Console.WriteLine($"Removed {dataset.Count - recursiveResult.Count} rows during recursive cleaning.");
-                    return recursiveResult;
+                    bestResult = cleanedData;
+                    bestMissingCount = newMissingCount;
+
+                    var recursiveResult = CleanDatasetRecursive(cleanedData, cartesianProduct, factorCount, uniqueValues, newCache, depth + 1);
+                    if (IsFull(recursiveResult, cartesianProduct))
+                    {
+                        Console.WriteLine($"Removed {dataset.Count - recursiveResult.Count} rows during recursive cleaning.");
+                        return recursiveResult;
+                    }
+                    bestResult = recursiveResult;
+
+                    // Пересчёт missingAfter после рекурсии
+                    missingAfter = new HashSet<string>(
+                        cartesianProduct.Select(r => string.Join("|", r.FactorValues)));
+                    presentAfter = new HashSet<string>(
+                        bestResult.Select(r => string.Join("|", r.FactorValues.Take(factorCount))));
+                    missingAfter.ExceptWith(presentAfter);
+                    bestMissingCount = missingAfter.Count;
                 }
             }
 
-            Console.WriteLine("Failed to achieve full structure.");
-            return dataset;
+            if (bestMissingCount >= originalMissingCount)
+            {
+                Console.WriteLine($"Depth {depth}: No improvement in missing combinations ({bestMissingCount} >= {originalMissingCount}), stopping recursion.");
+                return bestResult;
+            }
+
+            Console.WriteLine($"Depth {depth}: Improved missing combinations from {originalMissingCount} to {bestMissingCount}, continuing.");
+            return bestResult;
         }
 
-        /// <summary>
-        /// Проверка, является ли таблица полной (все комбинации присутствуют).
-        /// </summary>
+        // Проверка, является ли таблица полной (все комбинации присутствуют).
         public bool IsFull(List<FactorRow> dataset, List<FactorRow> cartesianProduct)
         {
             var datasetCombinations = new HashSet<string>(
@@ -357,9 +373,7 @@ namespace AnovaCleaner
             return requiredCombinations.All(comb => datasetCombinations.Contains(comb));
         }
 
-        /// <summary>
-        /// Добавление случайного результата в каждую строку.
-        /// </summary>
+        // Добавление случайного результата в каждую строку.
         private List<FactorRow> AddRandomResults(List<FactorRow> dataset)
         {
             return dataset.Select(row =>
@@ -370,18 +384,14 @@ namespace AnovaCleaner
             }).ToList();
         }
 
-        /// <summary>
-        /// Генерация случайного набора значений для фактора.
-        /// </summary>
+        // Генерация случайного набора значений для фактора.
         private HashSet<int> GenerateRandomSet(Random random, int maxValues)
         {
             int count = random.Next(1, maxValues + 1);
             return new HashSet<int>(Enumerable.Range(0, count).Select(_ => random.Next(1, 101)));
         }
 
-        /// <summary>
-        /// Построение декартова произведения.
-        /// </summary>
+        // Построение декартова произведения.
         private List<FactorRow> CartesianProduct(List<HashSet<int>> sets)
         {
             if (sets == null || sets.Count == 0) return new List<FactorRow>();
@@ -390,9 +400,7 @@ namespace AnovaCleaner
             return resultTuples;
         }
 
-        /// <summary>
-        /// Рекурсивный метод построения декартова произведения.
-        /// </summary>
+        // Рекурсивный метод построения декартова произведения.
         private void CartesianProductRecursive(List<HashSet<int>> sets, int index, List<int> current, List<FactorRow> result)
         {
             if (index == sets.Count)
@@ -408,9 +416,7 @@ namespace AnovaCleaner
             }
         }
 
-        /// <summary>
-        /// Сохранение таблицы в текстовый файл.
-        /// </summary>
+        // Сохранение таблицы в текстовый файл.
         private void SaveDatasetToFile(List<FactorRow> dataset, string filePath, string[] factorColumns, string resultColumn)
         {
             using var writer = new StreamWriter(filePath);
@@ -421,9 +427,7 @@ namespace AnovaCleaner
             }
         }
 
-        /// <summary>
-        /// Глубокое копирование словаря частот.
-        /// </summary>
+        // Глубокое копирование словаря частот.
         private Dictionary<int, Dictionary<int, int>> CloneDictionary(Dictionary<int, Dictionary<int, int>> source)
         {
             var clone = new Dictionary<int, Dictionary<int, int>>();
