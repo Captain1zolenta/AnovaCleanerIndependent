@@ -252,7 +252,7 @@ namespace AnovaCleaner
             int maxRowsToRemove = dataset.Count / 4; // Ограничение до 25%
             int rowsRemoved = 0;
             double meanResult = dataset.Average(r => r.FactorValues.Last());
-            double lossThreshold = meanResult * 0.75; // Увеличен порог до 75%
+            double lossThreshold = meanResult * 1.0; // Увеличен порог до 100%
             Console.WriteLine($"Порог потерь: {lossThreshold:F2}");
             Console.WriteLine($"Кандидаты на удаление: {string.Join(", ", candidates.Select(kvp => $"{kvp.Key}:{string.Join(",", kvp.Value)}"))}");
 
@@ -284,8 +284,9 @@ namespace AnovaCleaner
                         var newCartesianProduct = CartesianProduct(newUniqueValues.Values.ToList());
                         var newMissingCount = GetMissingCombinations(newCartesianProduct, cleanedData, factorCount).Count;
                         double loss = CalculateLoss(cleanedData);
-                        Console.WriteLine($"После удаления {rowsToRemoveCount} строк: Осталось {cleanedData.Count} строк, недостающих комбинаций: {newMissingCount}");
-                        if (loss <= lossThreshold && (newMissingCount < originalMissingCount || cleanedData.Count < dataset.Count))
+                        // Логирование эффективности
+                        Console.WriteLine($"После удаления {rowsToRemoveCount} строк: Осталось {cleanedData.Count} строк, недостающих комбинаций: {newMissingCount}, Потери: {loss:F2}");
+                        if (newMissingCount < originalMissingCount || (loss <= lossThreshold && cleanedData.Count < dataset.Count))
                         {
                             alternatives.Add((cleanedData, newCache));
                             rowsRemoved += rowsToRemoveCount;
