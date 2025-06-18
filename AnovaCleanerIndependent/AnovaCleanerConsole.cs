@@ -54,7 +54,7 @@ namespace AnovaCleaner
         private static readonly Random random = new Random();
 
         // Точка входа в приложение.
-        public static void Main(string[] _)
+        public static void Main(string[] args)
         {
             Console.WriteLine("ANOVA Cleaner Console");
             Console.WriteLine("Enter size category (1, 2, or 3):");
@@ -166,6 +166,7 @@ namespace AnovaCleaner
             if (IsFull(dataset, cartesianProduct))
             {
                 Console.WriteLine("Dataset is already full. No cleaning needed.");
+                GenerateReport(dataset, 0, 0.0, cartesianProduct);
                 return dataset;
             }
 
@@ -196,7 +197,8 @@ namespace AnovaCleaner
             // Ограничение глубины рекурсии.
             if (depth > 50)
             {
-                Console.WriteLine("Failed to achieve full structure due to recursion depth limit.");
+                Console.WriteLine("Превышен лимит глубины рекурсии, структура не достигнута.");
+                GenerateReport(dataset, GetMissingCombinations(cartesianProduct, dataset, factorCount).Count, CalculateLoss(dataset, cartesianProduct), cartesianProduct);
                 return dataset;
             }
 
@@ -204,104 +206,63 @@ namespace AnovaCleaner
             var missingCombinations = GetMissingCombinations(cartesianProduct, dataset, factorCount);
             int originalMissingCount = missingCombinations.Count;
 
-            Console.WriteLine($"Depth {depth}: Missing combinations ({originalMissingCount}): {string.Join(", ", missingCombinations)}");
+            Console.WriteLine($"Глубина {depth}: Недостающие комбинации ({originalMissingCount}): {string.Join(", ", missingCombinations)}");
 
             if (missingCombinations.Count == 0)
             {
-                Console.WriteLine("Dataset is now full after cleaning.");
+                Console.WriteLine("Таблица теперь полна после очистки.");
+                GenerateReport(dataset, 0, 0.0, cartesianProduct);
                 return dataset;
             }
 
-            // Анализ отсутствующих комбинаций для выбора целевого фактора.
-            var missingCountPerFactor = new Dictionary<int, int>();
-            for (int factorIndex = 0; factorIndex < factorCount; factorIndex++)
-            {
-                missingCountPerFactor[factorIndex] = missingCombinations.Count(comb =>
-                {
-                    string[] parts = comb.Split('|');
-                    string target = parts[factorIndex];
-                    return !uniqueValues[factorIndex].Contains(int.Parse(target));
-                });
-            }
-
-            int targetFactorIndex = missingCountPerFactor.OrderByDescending(kv => kv.Value).First().Key;
-            var targetValues = missingCombinations
-                .Select(comb => int.Parse(comb.Split('|')[targetFactorIndex]))
-                .Distinct()
-                .ToList();
-
-            // Сортировка по частоте (удаляем самые редкие).
-            var freq = frequencyCache[targetFactorIndex];
-            targetValues = targetValues.OrderBy(v => freq.ContainsKey(v) ? freq[v] : int.MaxValue).ToList();
-
-            // Пробуем несколько вариантов удаления.
-            var alternatives = new List<(List<FactorRow>, Dictionary<int, Dictionary<int, int>>)>();
-            foreach (var targetValue in targetValues.Take(3)) // Пробуем до 3 вариантов
-            {
-                var cleanedData = dataset.Where(row => row.FactorValues[targetFactorIndex] != targetValue).ToList();
-                var newFrequencyCache = CloneDictionary(frequencyCache);
-
-                foreach (var row in dataset.Where(r => r.FactorValues[targetFactorIndex] == targetValue))
-                {
-                    for (int i = 0; i < factorCount; i++)
-                    {
-                        if (newFrequencyCache[i].ContainsKey(row.FactorValues[i]))
-                        {
-                            newFrequencyCache[i][row.FactorValues[i]]--;
-                        }
-                    }
-                }
-
-                alternatives.Add((cleanedData, newFrequencyCache));
-            }
-
-            // Выбор лучшего варианта.
-            foreach (var (cleanedData, _) in alternatives)
-            {
-                if (IsFull(cleanedData, cartesianProduct))
-                {
-                    Console.WriteLine($"Removed {dataset.Count - cleanedData.Count} rows to achieve full structure.");
-                    return cleanedData;
-                }
-            }
-
-            Console.WriteLine("No single removal achieved fullness. Trying recursive cleaning...");
-
-            // Рекурсивные попытки с проверкой прогресса.
-            List<FactorRow> bestResult = dataset;
+            // Жадный выбор строки для удаления (максимальное покрытие недостающих комбинаций).
+            var bestDataset = dataset;
             int bestMissingCount = originalMissingCount;
+            double bestLoss = double.MaxValue;
 
-            foreach (var (cleanedData, newCache) in alternatives)
+            foreach (var row in dataset.ToList())
             {
-                var missingAfter = GetMissingCombinations(cartesianProduct, cleanedData, factorCount);
-                int newMissingCount = missingAfter.Count;
+                var tempDataset = dataset.Where(r => r != row).ToList();
+                var newMissing = GetMissingCombinations(cartesianProduct, tempDataset, factorCount).Count;
+                double loss = CalculateLoss(tempDataset, cartesianProduct);
 
-                if (newMissingCount < bestMissingCount)
+                if (newMissing < bestMissingCount || (newMissing == bestMissingCount && loss < bestLoss))
                 {
-                    bestResult = cleanedData;
-                    bestMissingCount = newMissingCount;
+                    bestDataset = tempDataset;
+                    bestMissingCount = newMissing;
+                    bestLoss = loss;
 
-                    var recursiveResult = CleanDatasetRecursive(
-                        cleanedData, cartesianProduct, factorCount, uniqueValues, newCache, depth + 1);
-
-                    if (IsFull(recursiveResult, cartesianProduct))
+                    if (newMissing == 0)
                     {
-                        Console.WriteLine($"Removed {dataset.Count - recursiveResult.Count} rows during recursive cleaning.");
-                        return recursiveResult;
+                        Console.WriteLine($"Удалено {dataset.Count - bestDataset.Count} строк для достижения полной структуры.");
+                        GenerateReport(bestDataset, 0, loss, cartesianProduct);
+                        return bestDataset;
                     }
-
-                    bestResult = recursiveResult;
                 }
             }
 
             if (bestMissingCount >= originalMissingCount)
             {
-                Console.WriteLine($"Depth {depth}: No improvement in missing combinations ({bestMissingCount} >= {originalMissingCount}), stopping recursion.");
-                return bestResult;
+                Console.WriteLine($"Глубина {depth}: Нет улучшения в недостающих комбинациях ({bestMissingCount} >= {originalMissingCount}), остановка рекурсии.");
+                GenerateReport(bestDataset, bestMissingCount, bestLoss, cartesianProduct);
+                return bestDataset;
             }
 
-            Console.WriteLine($"Depth {depth}: Improved missing combinations from {originalMissingCount} to {bestMissingCount}, continuing.");
-            return bestResult;
+            // Рекурсивный вызов с лучшим набором данных.
+            var newCache = CloneDictionary(frequencyCache);
+            foreach (var row in dataset.Except(bestDataset))
+            {
+                for (int i = 0; i < factorCount; i++)
+                {
+                    if (newCache[i].ContainsKey(row.FactorValues[i]))
+                    {
+                        newCache[i][row.FactorValues[i]]--;
+                    }
+                }
+            }
+
+            Console.WriteLine($"Глубина {depth}: Улучшено с {originalMissingCount} до {bestMissingCount} недостающих комбинаций, продолжаем.");
+            return CleanDatasetRecursive(bestDataset, cartesianProduct, factorCount, uniqueValues, newCache, depth + 1);
         }
 
         // Получение недостающих комбинаций.
@@ -330,6 +291,26 @@ namespace AnovaCleaner
                 cartesianProduct.Select(row => string.Join("|", row.FactorValues)));
 
             return requiredCombinations.All(comb => datasetCombinations.Contains(comb));
+        }
+
+        // Оценка потерь информации (сумма квадратов отклонений удаленных результатов).
+        private double CalculateLoss(List<FactorRow> dataset, List<FactorRow> originalDataset)
+        {
+            var originalResults = originalDataset.Select(r => r.FactorValues.Last()).ToList();
+            var currentResults = dataset.Select(r => r.FactorValues.Last()).ToList();
+            var removedResults = originalResults.Except(currentResults).ToList();
+            double mean = originalResults.Average();
+            return removedResults.Sum(r => Math.Pow(r - mean, 2));
+        }
+
+        // Генерация отчета об очистке.
+        private void GenerateReport(List<FactorRow> dataset, int missingCount, double loss, List<FactorRow> cartesianProduct)
+        {
+            Console.WriteLine($"Отчет об очистке:");
+            Console.WriteLine($"Оставшиеся строки: {dataset.Count}");
+            Console.WriteLine($"Недостающие комбинации: {missingCount}");
+            Console.WriteLine($"Потери информации (сумма квадратов отклонений): {loss:F2}");
+            Console.WriteLine($"Полная структура достигнута: {IsFull(dataset, cartesianProduct)}");
         }
 
         // Добавление случайного результата в каждую строку.
@@ -432,7 +413,7 @@ namespace AnovaCleaner
                 .GroupBy(row => string.Join(",", row.FactorValues.Take(columnCount)))
                 .Select(g => g.First()).ToList();
 
-            Console.WriteLine($"Generated reduced table with {reducedDatasetWithResults.Count} rows after removing duplicates.");
+            Console.WriteLine($"Сгенерирована уменьшенная таблица с {reducedDatasetWithResults.Count} строками после удаления дубликатов.");
             return new List<List<FactorRow>> { fullDatasetWithResults, reducedDatasetWithResults };
         }
     }
